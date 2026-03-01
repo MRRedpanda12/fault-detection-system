@@ -4,22 +4,47 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
+from streamlit_folium import st_folium
 import folium
-from streamlit_folium import folium_static
+from folium.plugins import MarkerCluster
+import hashlib
 
-st.set_page_config(layout="wide")
-st.title("Cloud-Based Fault Detection Using Digital Twin & GIS")
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
+st.set_page_config(page_title="Tamil Nadu Fault Detection", layout="wide")
 
-# -------------------------------
-# 1. Generate Simulated Data
-# -------------------------------
+# -------------------------------------------------
+# 🔐 LOGIN SYSTEM
+# -------------------------------------------------
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+USER = "admin"
+PASS_HASH = hash_password("cloud123")
+
+st.sidebar.title("Secure Cloud Login")
+
+username = st.sidebar.text_input("Username")
+password = st.sidebar.text_input("Password", type="password")
+
+if username != USER or hash_password(password) != PASS_HASH:
+    st.title("🔐 Cloud-Based Fault Detection System")
+    st.warning("Please login to access the dashboard.")
+    st.stop()
+
+st.sidebar.success("Access Granted ✅")
+
+# -------------------------------------------------
+# DATA GENERATION (1500+)
+# -------------------------------------------------
 np.random.seed(42)
 
-normal_voltage = np.random.normal(230, 3, 200)
-normal_current = np.random.normal(10, 1, 200)
+normal_voltage = np.random.normal(230, 4, 1200)
+normal_current = np.random.normal(10, 1.5, 1200)
 
-fault_voltage = np.random.normal(150, 10, 40)
-fault_current = np.random.normal(25, 5, 40)
+fault_voltage = np.random.normal(140, 20, 350)
+fault_current = np.random.normal(28, 8, 350)
 
 voltage = np.concatenate([normal_voltage, fault_voltage])
 current = np.concatenate([normal_current, fault_current])
@@ -29,97 +54,114 @@ df = pd.DataFrame({
     "Current": current
 })
 
-# -------------------------------
-# 2. ML Fault Detection
-# -------------------------------
-model = IsolationForest(contamination=0.15, random_state=42)
+# -------------------------------------------------
+# ML MODEL
+# -------------------------------------------------
+model = IsolationForest(contamination=0.20, random_state=42)
 df["Anomaly"] = model.fit_predict(df)
 df["Status"] = df["Anomaly"].map({1: "NORMAL", -1: "FAULT"})
 
+# -------------------------------------------------
+# PRIORITY LOGIC
+# -------------------------------------------------
+def assign_priority(row):
+    if row["Status"] == "FAULT":
+        if row["Current"] > 35:
+            return "HIGH"
+        elif row["Current"] > 25:
+            return "MEDIUM"
+        else:
+            return "LOW"
+    return "NORMAL"
+
+df["Priority"] = df.apply(assign_priority, axis=1)
+
+# -------------------------------------------------
+# DASHBOARD METRICS
+# -------------------------------------------------
+st.title("⚡ Tamil Nadu Wide Fault Detection Dashboard")
+
 total_points = len(df)
 total_faults = len(df[df["Status"] == "FAULT"])
+high_faults = len(df[df["Priority"] == "HIGH"])
+medium_faults = len(df[df["Priority"] == "MEDIUM"])
+low_faults = len(df[df["Priority"] == "LOW"])
 
-# -------------------------------
-# 3. System Summary
-# -------------------------------
-st.subheader("System Summary")
-col1, col2 = st.columns(2)
-col1.metric("Total Data Points", total_points)
-col2.metric("Detected Faults", total_faults)
+col1, col2, col3, col4, col5 = st.columns(5)
+col1.metric("Total Data", total_points)
+col2.metric("Total Faults", total_faults)
+col3.metric("High Priority", high_faults)
+col4.metric("Medium Priority", medium_faults)
+col5.metric("Low Priority", low_faults)
 
-# -------------------------------
-# 4. Full Dataset
-# -------------------------------
-st.subheader("Complete Dataset")
-st.dataframe(df)
-
-st.subheader("Normal Data Points")
-st.dataframe(df[df["Status"] == "NORMAL"])
-
-st.subheader("Fault Data Points")
-st.dataframe(df[df["Status"] == "FAULT"])
-
-# -------------------------------
-# 5. Visualization
-# -------------------------------
-st.subheader("Fault Visualization")
+# -------------------------------------------------
+# VISUALIZATION
+# -------------------------------------------------
+st.subheader("Voltage vs Current Fault Visualization")
 
 fig, ax = plt.subplots(figsize=(8,6))
 sns.scatterplot(
     data=df,
     x="Voltage",
     y="Current",
-    hue="Status",
-    palette={"NORMAL": "green", "FAULT": "red"},
+    hue="Priority",
+    palette={
+        "HIGH": "red",
+        "MEDIUM": "orange",
+        "LOW": "yellow",
+        "NORMAL": "green"
+    },
     ax=ax
 )
-plt.title("ML-Based Fault Detection")
+plt.title("Fault Classification with Priority Levels")
 st.pyplot(fig)
 
-# -------------------------------
-# 6. Digital Twin Simulation
-# -------------------------------
-st.subheader("Digital Twin Fault Current Calculation")
+# -------------------------------------------------
+# GIS MAPPING - FIXED VERSION
+# -------------------------------------------------
+st.subheader("GIS Fault Mapping Across Tamil Nadu")
 
-source_voltage = 230
-line_impedance = {
-    "Segment_A": 0.05,
-    "Segment_B": 0.08,
-    "Segment_C": 0.10
-}
+# Tamil Nadu center
+tn_center_lat = 11.1271
+tn_center_lon = 78.6569
 
-for seg in line_impedance:
-    fault_current_calc = source_voltage / (line_impedance[seg] + 0.5)
-    st.write(f"{seg} Fault Current: {round(fault_current_calc, 2)} A")
+m = folium.Map(location=[tn_center_lat, tn_center_lon], zoom_start=7)
 
-# -------------------------------
-# 7. GIS Fault Mapping
-# -------------------------------
-st.subheader("GIS Fault Mapping")
+# Add marker clustering (IMPORTANT FIX)
+marker_cluster = MarkerCluster().add_to(m)
 
-center_lat = 11.0168
-center_lon = 76.9558
+fault_points = df[df["Status"] == "FAULT"]
 
-m = folium.Map(location=[center_lat, center_lon], zoom_start=13)
+for i in range(len(fault_points)):
 
-for i in range(total_faults):
-    lat = center_lat + np.random.uniform(-0.02, 0.02)
-    lon = center_lon + np.random.uniform(-0.02, 0.02)
+    lat = np.random.uniform(8.0, 13.5)
+    lon = np.random.uniform(76.0, 80.5)
+
+    priority = fault_points.iloc[i]["Priority"]
+
+    if priority == "HIGH":
+        color = "red"
+    elif priority == "MEDIUM":
+        color = "orange"
+    else:
+        color = "blue"
 
     folium.Marker(
         [lat, lon],
-        popup="Detected Fault Location",
-        icon=folium.Icon(color="red")
-    ).add_to(m)
+        popup=f"Priority: {priority}",
+        icon=folium.Icon(color=color)
+    ).add_to(marker_cluster)
 
-folium_static(m)
+st_folium(m, width=1100, height=600)
 
-# -------------------------------
-# 8. Final Conclusion
-# -------------------------------
-st.subheader("System Conclusion")
+# -------------------------------------------------
+# SYSTEM STATUS
+# -------------------------------------------------
+st.subheader("System Status")
 
-if total_faults > 0:
-    st.error("⚠ Fault Condition Detected in Feeder Network")
+if high_faults > 0:
+    st.error("⚠ HIGH PRIORITY FAULTS DETECTED - Immediate Action Required")
+elif total_faults > 0:
+    st.warning("⚠ Faults Detected - Monitor System")
 else:
     st.success("System Operating Normally")
