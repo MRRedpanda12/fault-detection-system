@@ -17,23 +17,6 @@ st.set_page_config(page_title="Tamil Nadu Fault Detection", layout="wide")
 # -------------------------------------------------
 # 🔐 LOGIN SYSTEM
 # -------------------------------------------------
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-USER = "admin"
-PASS_HASH = hash_password("cloud123")
-
-st.sidebar.title("Secure Cloud Login")
-
-username = st.sidebar.text_input("Username")
-password = st.sidebar.text_input("Password", type="password")
-
-if username != USER or hash_password(password) != PASS_HASH:
-    st.title("🔐 Cloud-Based Fault Detection System")
-    st.warning("Please login to access the dashboard.")
-    st.stop()
-
-st.sidebar.success("Access Granted ✅")
 
 # -------------------------------------------------
 # DATA GENERATION (1500+)
